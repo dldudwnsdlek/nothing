@@ -2,6 +2,7 @@
 
 > 대상: 쿠팡이츠 Junior Data PM (Catalog Quality Insights) 지원용 SQL 프로젝트, A안
 > 점검일: 2026-09-23
+> 바로 실행할 수 있는 파일 묶음: [`catalog-quality-monitor/`](../catalog-quality-monitor/) (SQL 9개, `run_monitor.py`)
 > 점검 방법: 공공데이터포털 데이터셋 페이지를 직접 확인했고, 설계안 SQL은 DuckDB 1.5.5에서 실제 스키마를 흉내 낸 가짜 데이터로 실행해 봤습니다.
 > ⚠️ 이 점검 환경에서는 공공데이터포털 파일을 내려받을 수 없었습니다. 컬럼과 건수는 데이터셋 페이지 기준입니다. **파일을 받은 첫날 한 번 더 확인하세요.**
 
@@ -222,8 +223,7 @@ FROM read_csv('data/good_price_20260630.csv', encoding = 'cp949', all_varchar = 
 CREATE OR REPLACE TABLE raw_eatout_price AS
 SELECT * FROM read_csv('data/eatout_price.csv', all_varchar = true);
 
-CREATE OR REPLACE TABLE raw_restaurant AS
-SELECT * FROM read_csv('data/restaurant_license.csv', all_varchar = true);
+-- 일반음식점(확장용) 적재는 07_restaurant.sql 맨 위에 있음 → 파일이 없어도 MVP가 돌아가도록 분리
 ```
 
 원칙은 **원본(raw)에 손대지 않는 것**입니다. 모든 컬럼을 문자열로 읽는 이유는 가격 칸에 '8,000원'이 섞여 있으면 숫자 타입 추론이 실패하거나 값이 NULL로 바뀌기 때문입니다. 정제는 다음 단계에서 SQL로 직접 합니다.
@@ -527,6 +527,9 @@ LIMIT 10;
 
 ```sql
 -- 07_restaurant.sql : 일반음식점 인허가 = '전체 공급(입점) 풀'. 월별 개업/폐업 KPI + 이상 징후 탐지
+CREATE OR REPLACE TABLE raw_restaurant AS
+SELECT * FROM read_csv('data/restaurant_license.csv', all_varchar = true);
+
 CREATE OR REPLACE TABLE stg_restaurant AS
 SELECT 관리번호 AS license_id,
        -- 날짜가 '20240131' 또는 '2024-01-31' 어느 쪽으로 와도 읽히게

@@ -1,0 +1,8 @@
+data/*
+!data/README.md
+*.duckdb
+*.duckdb.wal
+reports/*
+!reports/.gitkeep
+__pycache__/
+.ipynb_checkpoints/
