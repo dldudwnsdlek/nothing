@@ -1,18 +1,19 @@
 (function () {
   const api = window.petAPI;
+  const { spriteFor, motion } = window.ChiiDraw;
   const cards = [...document.querySelectorAll('.card')];
-  const poses = ['idle', 'talk', 'dance', 'lie'];
   const poseOf = {};
 
   cards.forEach((card) => {
     const type = card.dataset.type;
+    const img = document.createElement('img');
+    img.draggable = false;
+    card.querySelector('.face').appendChild(img);
     poseOf[type] = 'idle';
     card.addEventListener('click', () => api.spawn(type));
     card.addEventListener('mouseenter', () => { poseOf[type] = 'dance'; });
-    card.addEventListener('mouseleave', () => { poseOf[type] = pick(poses); });
+    card.addEventListener('mouseleave', () => { poseOf[type] = 'idle'; });
   });
-
-  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
 
   document.getElementById('all').addEventListener('click', () => {
     ['chiikawa', 'hachiware', 'usagi'].forEach((t, i) => setTimeout(() => api.spawn(t), i * 350));
@@ -30,7 +31,11 @@
     const t = (now - start) / 1000;
     cards.forEach((card, i) => {
       const type = card.dataset.type;
-      card.querySelector('.face').innerHTML = window.ChiiDraw.render(type, { pose: poseOf[type], t: t + i, uid: 'panel-' + type });
+      const img = card.querySelector('.face img');
+      const sp = spriteFor(type, poseOf[type]);
+      if (!img.src.endsWith(sp.src)) img.src = sp.src;
+      const m = motion(poseOf[type], t + i);
+      img.style.transform = `translateY(${-m.y}px) rotate(${m.rot}deg) scale(${m.sx}, ${m.sy})`;
     });
     requestAnimationFrame(frame);
   }

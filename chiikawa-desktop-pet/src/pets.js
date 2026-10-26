@@ -1,11 +1,11 @@
 // 화면 위를 돌아다니는 캐릭터들의 행동 로직 (overlay.html 에서 실행)
 (function () {
-  const { CHARS, render } = window.ChiiDraw;
+  const { CHARS, spriteFor, motion, effects } = window.ChiiDraw;
   const api = window.petAPI || {
     setIgnore() {}, reportCounts() {}, onSpawn() {}, onClear() {},
   };
 
-  const W = 96, H = 108;
+  const W = 110, H = 130; // 캐릭터 한 마리가 차지하는 영역
   const GRAVITY = 1900;
   const MAX_PETS = 15;
 
@@ -17,9 +17,9 @@
 
   // 캐릭터별 행동 가중치 [상태, 가중치, 최소초, 최대초]
   const BEHAVIOR = {
-    chiikawa: [['walk', 30, 2, 6], ['run', 5, 1.2, 2.5], ['idle', 14, 1.5, 4], ['sit', 14, 3, 7], ['lie', 13, 4, 9], ['sleep', 7, 6, 14], ['dance', 5, 2.5, 5], ['cry', 7, 2, 3.5], ['talk', 5, 2.2, 2.8], ['jump', 4]],
-    hachiware: [['walk', 30, 2, 6], ['run', 8, 1.2, 2.5], ['idle', 12, 1.5, 4], ['sit', 10, 3, 7], ['lie', 10, 4, 9], ['sleep', 5, 6, 14], ['dance', 12, 3, 6], ['cry', 2, 2, 3], ['talk', 9, 2.5, 3], ['jump', 6]],
-    usagi: [['walk', 20, 1.5, 4], ['run', 18, 1.5, 3], ['idle', 6, 1, 2.5], ['sit', 4, 2, 4], ['lie', 6, 3, 7], ['sleep', 3, 5, 10], ['dance', 8, 2.5, 5], ['shout', 14, 1.4, 1.8], ['talk', 4, 2, 2.6], ['jump', 15]],
+    chiikawa: [['walk', 30, 2, 6], ['run', 5, 1.2, 2.5], ['idle', 12, 1.5, 4], ['eat', 10, 3, 6], ['picnic', 6, 4, 8], ['lie', 13, 4, 9], ['sleep', 7, 6, 14], ['dance', 5, 2.5, 5], ['cry', 7, 2, 3.5], ['talk', 5, 2.2, 2.8], ['jump', 4]],
+    hachiware: [['walk', 30, 2, 6], ['run', 8, 1.2, 2.5], ['idle', 12, 1.5, 4], ['picnic', 7, 4, 8], ['lie', 10, 4, 9], ['sleep', 5, 6, 14], ['dance', 14, 3, 6], ['cry', 2, 2, 3], ['talk', 9, 2.5, 3], ['jump', 6]],
+    usagi: [['walk', 20, 1.5, 4], ['run', 18, 1.5, 3], ['idle', 6, 1, 2.5], ['sweep', 8, 3, 6], ['picnic', 4, 3, 6], ['lie', 6, 3, 7], ['sleep', 3, 5, 10], ['dance', 8, 2.5, 5], ['shout', 14, 1.4, 1.8], ['talk', 4, 2, 2.6], ['jump', 15]],
   };
 
   const stage = document.getElementById('stage');
@@ -49,11 +49,20 @@
       this.el.className = 'pet';
       this.el.style.width = W + 'px';
       this.el.style.height = H + 'px';
+      this.shadow = document.createElement('div');
+      this.shadow.className = 'shadow';
       this.body = document.createElement('div');
       this.body.className = 'pet-body';
+      this.img = document.createElement('img');
+      this.img.draggable = false;
+      this.fx = document.createElement('div');
+      this.fx.className = 'fx';
+      this.body.append(this.img, this.fx);
       this.bubble = document.createElement('div');
       this.bubble.className = 'bubble';
-      this.el.append(this.bubble, this.body);
+      this.el.append(this.shadow, this.body, this.bubble);
+      this.sprite = null;
+      this.fxKind = null;
       this.el._pet = this;
       stage.appendChild(this.el);
 
@@ -152,10 +161,22 @@
       if (pose === 'enter' || pose === 'exit') pose = 'walk';
       if (this.airborne && this.state !== 'held') pose = this.vy > 0 ? 'jump' : 'fall';
       if (this.state === 'exit') pose = 'run';
-      this.body.innerHTML = render(this.type, {
-        pose, t: this.t, facing: this.facing, uid: this.uid,
-        air: this.y,
-      });
+      const sp = spriteFor(this.type, pose);
+      if (this.sprite !== sp.name) {
+        this.sprite = sp.name;
+        this.img.src = sp.src;
+        this.img.style.height = sp.height + 'px';
+      }
+      const m = motion(pose, this.t);
+      this.body.style.transform =
+        `translate(-50%, ${(-m.y).toFixed(1)}px) scaleX(${this.facing}) rotate(${m.rot.toFixed(1)}deg) scale(${m.sx.toFixed(3)}, ${m.sy.toFixed(3)})`;
+      if (m.extra || this.fxKind) {
+        this.fx.innerHTML = effects(m.extra, this.t);
+        this.fx.style.transform = `scaleX(${this.facing})`; // 효과 글자는 뒤집히지 않게
+        this.fxKind = m.extra;
+      }
+      const s = Math.max(0.3, 1 - this.y / 300);
+      this.shadow.style.transform = `translate(-50%, ${this.y.toFixed(1)}px) scale(${s.toFixed(2)})`;
       const left = this.x - W / 2;
       const top = groundY() - H - this.y;
       this.el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
