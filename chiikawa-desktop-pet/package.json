@@ -1,0 +1,39 @@
+{
+  "name": "chiikawa-desktop-pet",
+  "version": "1.0.0",
+  "description": "치이카와·하치와레·우사기가 바탕화면을 돌아다니는 데스크톱 펫",
+  "main": "src/main.js",
+  "author": "dldudwnsdlek",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^44.9.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.dldudwnsdlek.chiikawa-desktop-pet",
+    "productName": "ChiikawaPet",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["src/**/*", "package.json"],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.entertainment",
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "identity": null
+    }
+  }
+}
