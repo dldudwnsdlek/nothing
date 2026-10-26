@@ -1,0 +1,88 @@
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const path = require('path');
+
+const isMac = process.platform === 'darwin';
+let panel = null;
+let overlay = null;
+
+function overlayBounds() {
+  // 작업 영역(작업표시줄·Dock 제외) 위를 걸어다니도록
+  return screen.getPrimaryDisplay().workArea;
+}
+
+function createOverlay() {
+  const { x, y, width, height } = overlayBounds();
+  overlay = new BrowserWindow({
+    x, y, width, height,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    roundedCorners: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false,
+    },
+  });
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+  if (isMac) overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 기본은 마우스가 아래 창으로 통과. 캐릭터 위에 올라가면 렌더러가 해제 요청
+  overlay.setIgnoreMouseEvents(true, { forward: true });
+  overlay.loadFile(path.join(__dirname, 'overlay.html'));
+  overlay.on('closed', () => { overlay = null; });
+}
+
+function createPanel() {
+  panel = new BrowserWindow({
+    width: 340,
+    height: 300,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: '치이카와 데스크톱 펫',
+    backgroundColor: '#fff8ee',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  });
+  panel.loadFile(path.join(__dirname, 'panel.html'));
+  panel.on('closed', () => { panel = null; app.quit(); });
+}
+
+function fitOverlay() {
+  if (overlay) overlay.setBounds(overlayBounds());
+}
+
+ipcMain.on('spawn', (_e, type) => overlay && overlay.webContents.send('spawn', type));
+ipcMain.on('clear', () => overlay && overlay.webContents.send('clear'));
+ipcMain.on('counts', (_e, counts) => panel && panel.webContents.send('counts', counts));
+ipcMain.on('set-ignore', (_e, ignore) => {
+  if (!overlay) return;
+  if (ignore) overlay.setIgnoreMouseEvents(true, { forward: true });
+  else overlay.setIgnoreMouseEvents(false);
+});
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (panel) { if (panel.isMinimized()) panel.restore(); panel.show(); panel.focus(); }
+  });
+
+  app.whenReady().then(() => {
+    createOverlay();
+    createPanel();
+    screen.on('display-metrics-changed', fitOverlay);
+    screen.on('display-added', fitOverlay);
+    screen.on('display-removed', fitOverlay);
+    app.on('activate', () => { if (!panel) createPanel(); });
+  });
+
+  app.on('window-all-closed', () => app.quit());
+}

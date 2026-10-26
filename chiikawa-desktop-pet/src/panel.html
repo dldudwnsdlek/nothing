@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>치이카와 데스크톱 펫</title>
+  <style>
+    :root { --ink: #4b3a3a; --bg: #fff8ee; --card: #ffffff; --line: #f0dcc8; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--ink);
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; user-select: none; }
+    .wrap { padding: 14px; }
+    h1 { font-size: 16px; margin: 0 0 10px; text-align: center; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .card { background: var(--card); border: 2px solid var(--line); border-radius: 14px;
+      padding: 6px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      transition: transform .1s, border-color .1s; }
+    .card:hover { border-color: #e8b4c0; transform: translateY(-2px); }
+    .card:active { transform: translateY(1px); }
+    .face { width: 70px; height: 78px; pointer-events: none; }
+    .name { font-weight: 700; font-size: 13px; }
+    .count { font-size: 11px; opacity: .7; }
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+    .row button { flex: 1; padding: 9px 6px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); font-weight: 700; font-size: 13px; }
+    .row button.primary { background: #ffe3ea; border-color: #f2b8c6; }
+    .row button:hover { filter: brightness(.97); }
+    .tip { margin-top: 10px; font-size: 11px; line-height: 1.5; opacity: .75; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>누구를 부를까요?</h1>
+    <div class="cards">
+      <button class="card" data-type="chiikawa"><div class="face"></div><span class="name">치이카와</span><span class="count">0</span></button>
+      <button class="card" data-type="hachiware"><div class="face"></div><span class="name">하치와레</span><span class="count">0</span></button>
+      <button class="card" data-type="usagi"><div class="face"></div><span class="name">우사기</span><span class="count">0</span></button>
+    </div>
+    <div class="row">
+      <button class="primary" id="all">다 같이 나와!</button>
+      <button id="clear">모두 들여보내기</button>
+    </div>
+    <div class="tip">클릭: 깡충 · 드래그: 들어서 던지기 · 우클릭: 집에 보내기</div>
+  </div>
+  <script src="characters.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

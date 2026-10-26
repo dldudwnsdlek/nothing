@@ -1,0 +1,42 @@
+name: Build Chiikawa Desktop Pet
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'chiikawa-desktop-pet/**'
+      - '.github/workflows/build-chiikawa-pet.yml'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+            artifact: ChiikawaPet-windows
+            files: |
+              chiikawa-desktop-pet/dist/*.exe
+          - os: macos-latest
+            script: dist:mac
+            artifact: ChiikawaPet-mac
+            files: |
+              chiikawa-desktop-pet/dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: chiikawa-desktop-pet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
