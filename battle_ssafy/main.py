@@ -819,10 +819,32 @@ class Brain:
 
     ENGAGE = 4
     MEGA_DETOUR = True
+    ROLE = 'AUTO'   # 'STRIKER' / 'MEGA' / 'GUARD' (파일별로 지정), 'AUTO'면 자동 분담
+    SLOT_ROLES = {'M1': 'GUARD', 'M2': 'MEGA', 'M3': 'STRIKER'}  # 실행 순서 Player1>2>3 기준
+
+    def role_of(self, name):
+        """탱크 이름(M=나, M1~M3=아군)의 역할"""
+        if self.ROLE == 'AUTO':
+            return 'AUTO'
+        if name == 'M':
+            return self.ROLE
+        mapping = dict(self.SLOT_ROLES)
+        mine = mapping.get(self.my_id)
+        if mine != self.ROLE:
+            # 실행 순서가 바뀐 경우: 내 역할을 가진 슬롯과 맞바꿔서 추정
+            for k, v in list(mapping.items()):
+                if v == self.ROLE:
+                    mapping[k] = mine
+            mapping[self.my_id] = self.ROLE
+        return mapping.get(name, 'AUTO')
+
+    def effective_engage(self):
+        return 1 if self.ROLE == 'GUARD' else self.ENGAGE
 
     def duel_shot(self, rays, race_us):
         st = self.st
-        if self.ENGAGE == 0:
+        engage = self.effective_engage()
+        if engage == 0:
             return None
         best = None
         for d in DIR_ORDER:
@@ -831,14 +853,14 @@ class Brain:
                 continue
             name = ry[2]
             hp = st.enemy_hp.get(name, 100)
-            if self.ENGAGE == 2:
+            if engage == 2:
                 # 내가 곧(2턴 이내) 포탑을 쏠 수 있으면 교전 무시하고 레이스 우선
                 if race_us <= 3 and st.X_hp > 0:
                     continue
-            if self.ENGAGE == 4:
+            if engage == 4:
                 if not (self.was_shot or hp <= 60 or hp < st.hp or self.can_hit_from(ry[1], st.H)):
                     continue
-            if self.ENGAGE == 3:
+            if engage == 3:
                 # 적이 공격적이거나(내가 맞은 적 있음) 약하거나 우리 포탑을 노릴 때만 교전
                 if not (self.was_shot or hp <= 60 or self.can_hit_from(ry[1], st.H)):
                     continue
@@ -880,6 +902,14 @@ class Brain:
         if st.X is not None:
             # 아군 전체 레인 배정 (모든 클라이언트가 같은 규칙으로 계산 → 역할 자동 분담)
             tanks = self.my_side_tanks()
+            attackers = [(n, p) for n, p in tanks if self.role_of(n) != 'GUARD']
+            guard_mode = False
+            if self.HARD_ROLES and len(attackers) >= 2 and st.X_hp > NORMAL_DMG:
+                if self.role_of('M') == 'GUARD':
+                    guard_mode = True
+                tanks = attackers
+            if guard_mode:
+                return self.guard_plan(dist, parent, rays)
             per = []
             for name, pos in tanks:
                 if name == 'M':
@@ -897,20 +927,28 @@ class Brain:
                 lane_cost, lane_cell = my_lane
                 direct_time = lane_cost
                 mega_plan = self.mega_detour(dist, st.X, lane_cell) if (self.mega_enabled() and self.MEGA_DETOUR) else None
-                if mega_plan is not None and st.X_hp > NORMAL_DMG and st.mega == 0:
+                role = self.role_of('M')
+                mega_goal = 2 if (role == 'MEGA' and self.HARD_ROLES) else 1
+                slack = {'MEGA': self.MEGA_SLACK, 'STRIKER': -1}.get(role, 0)
+                if mega_plan is not None and st.X_hp > NORMAL_DMG and st.mega < mega_goal:
                     q, via_cost = mega_plan
+                    need = mega_goal - st.mega
+                    via_cost += need - 1
                     # 다른 아군의 예상 사격 일정 + 내 일정으로 처치 라운드 비교
                     others = [(n, c) for n, c in assign.get('_list', []) if n != 'M']
-                    t_direct = self.kill_round(others + [('M', direct_time)], st.X_hp, {})
-                    t_mega = self.kill_round(others + [('M', via_cost)], st.X_hp, {'M': 1})
-                    if t_mega <= t_direct:
+                    t_direct = self.kill_round(others + [('M', direct_time)], st.X_hp, {'M': st.mega})
+                    t_mega = self.kill_round(others + [('M', via_cost)], st.X_hp, {'M': mega_goal})
+                    if t_mega <= t_direct + slack:
                         target_cell = q
                         want_mega = True
                 if target_cell is None:
                     target_cell = lane_cell
             else:
                 # 레인이 모두 찼거나 갈 수 없음 → 지원 역할: 메가 확보 후 적 탱크 사냥/대기
-                if st.mega < 2 and self.mega_enabled():
+                if self.role_of('M') == 'GUARD':
+                    return self.guard_plan(dist, parent, rays)
+                support_mega = 3 if self.role_of('M') == 'MEGA' else 2
+                if st.mega < support_mega and self.mega_enabled():
                     q = self.nearest_supply_adj(dist)
                     if q is not None and dist[q] <= 12:
                         target_cell = q
@@ -979,7 +1017,7 @@ class Brain:
             if i == n:
                 lst = [(nm, cost) for nm, (cost, _cell) in cur]
                 kr = self.kill_round(lst, self.st.X_hp, {})
-                tot = sum(c for _, c in lst)
+                tot = sum(c + (0.5 if self.role_of(nm) == 'GUARD' else 0) for nm, c in lst)
                 key = (kr, -len(lst), tot)
                 if best is None or key < best[0]:
                     best = (key, dict((nm, v) for nm, v in cur), lst)
@@ -997,6 +1035,35 @@ class Brain:
         res = dict(best[1])
         res['_list'] = best[2]
         return res
+
+    MEGA_SLACK = 0
+    GUARD_MEGA = 2
+    HARD_ROLES = False
+
+    def guard_plan(self, dist, parent, rays):
+        """수비/사냥 담당: 메가 확보 → 우리 포탑을 노리는 적 탱크를 최우선 사냥"""
+        st = self.st
+        me = st.my_pos
+        target_cell = None
+        threat = any(self.can_hit_from(p, st.H) for p in st.enemy_pos.values())
+        if st.mega < self.GUARD_MEGA and self.mega_enabled() and not threat:
+            q = self.nearest_supply_adj(dist)
+            if q is not None and dist[q] <= 10:
+                if q == me and st.codes and st.mega < MAX_MEGA:
+                    text, s = self.decode(st.codes[0])
+                    self.pending_g = (s, st.mega)
+                    return f'G {text}'
+                target_cell = q
+        if target_cell is None:
+            target_cell = self.hunt_cell(dist)
+        if target_cell is None or target_cell == me:
+            opts = self.lane_options(dist, st.X)
+            if opts:
+                target_cell = min(opts.values())[1]
+        if target_cell is None or target_cell == me:
+            return None
+        step = self.first_step(parent, me, target_cell)
+        return self.step_cmd(step) if step else None
 
     def supply_adj_cells(self):
         res = []
