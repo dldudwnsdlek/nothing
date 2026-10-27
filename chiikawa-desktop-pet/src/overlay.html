@@ -2,13 +2,13 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
   <title>overlay</title>
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
     body { user-select: none; -webkit-user-select: none; }
     #stage { position: fixed; inset: 0; }
-    .pet { position: absolute; left: 0; top: 0; will-change: transform; pointer-events: none; }
+    .pet { position: absolute; left: 0; top: 0; will-change: transform; pointer-events: none; transform-origin: 50% 100%; }
     .pet-body { position: absolute; left: 50%; bottom: 4px; transform-origin: 50% 100%;
       pointer-events: auto; cursor: grab; line-height: 0; }
     .pet-body:active { cursor: grabbing; }
@@ -33,7 +33,7 @@
       text-align: center; pointer-events: none; transform-origin: 50% 100%; will-change: transform; }
     .bubble {
       position: absolute; left: 50%; bottom: 100%; z-index: 2;
-      transform: translate(-50%, 4px) scale(.6); opacity: 0;
+      transform: translate(-50%, 4px) rotate(var(--rot, 0deg)) scale(.6); opacity: 0;
       transition: opacity .15s, transform .15s;
       background: #fff; color: #4b3a3a; border: 2px solid #4b3a3a; border-radius: 14px;
       padding: 4px 10px; font: 700 13px/1.3 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
@@ -43,7 +43,32 @@
       content: ""; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
       border: 6px solid transparent; border-top-color: #4b3a3a;
     }
-    .bubble.show { opacity: 1; transform: translate(-50%, -2px) scale(1); }
+    .bubble.show { opacity: 1; transform: translate(-50%, -2px) rotate(var(--rot, 0deg)) scale(1); }
+    body.photo-mode .bubble { display: none; }
+    .fx-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2500; }
+    .banner, .toast { position: fixed; left: 50%; transform: translate(-50%, -20px); opacity: 0; z-index: 2600;
+      pointer-events: none; transition: opacity .35s, transform .35s; white-space: nowrap;
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #4b3a3a; }
+    .banner { top: 18%; font-size: 44px; font-weight: 900; -webkit-text-stroke: 2px #fff; text-shadow: 0 4px 0 #f7b6c8; }
+    .toast { top: 24px; font-size: 15px; font-weight: 700; background: #fff; border: 2px solid #4b3a3a;
+      border-radius: 16px; padding: 8px 16px; }
+    .banner.show, .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .countdown { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 2600; pointer-events: none;
+      font: 900 96px/1 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #fff; -webkit-text-stroke: 3px #4b3a3a;
+      animation: count .65s ease-out forwards; }
+    @keyframes count { from { opacity: 1; transform: translate(-50%, -50%) scale(1.4); } to { opacity: 0; transform: translate(-50%, -50%) scale(.8); } }
+    .flash { position: fixed; inset: 0; background: #fff; z-index: 2700; pointer-events: none; animation: flash .7s ease-out forwards; }
+    @keyframes flash { from { opacity: .95; } to { opacity: 0; } }
+    .photo-frame { position: absolute; z-index: 500; box-sizing: border-box; border: 10px solid #fff; border-bottom-width: 0;
+      border-radius: 18px 18px 0 0; background: linear-gradient(#ffe3ec 0%, #fff6e6 70%, #cfeec0 70%, #b6e3a5 100%);
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #4b3a3a; pointer-events: none; }
+    .photo-frame .title { position: absolute; top: 10px; left: 0; right: 0; text-align: center; font-weight: 900; font-size: 18px; }
+    .photo-frame .date { position: absolute; top: 12px; right: 14px; font-size: 12px; opacity: .6; }
+    .photo-preview { position: fixed; left: 50%; top: 12%; z-index: 2650; pointer-events: none; background: #fff; padding: 10px 10px 34px;
+      border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.25); opacity: 0;
+      transform: translate(-50%, 30px) rotate(-4deg) scale(.9); transition: opacity .4s, transform .4s; }
+    .photo-preview.show { opacity: 1; transform: translate(-50%, 0) rotate(-3deg) scale(1); }
+    .photo-preview img { display: block; max-width: 380px; max-height: 260px; }
   </style>
 </head>
 <body>
@@ -51,5 +76,6 @@
   <script src="characters.js"></script>
   <script src="monster.js"></script>
   <script src="pets.js"></script>
+  <script src="events.js"></script>
 </body>
 </html>

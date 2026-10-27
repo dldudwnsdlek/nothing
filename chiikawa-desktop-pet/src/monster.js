@@ -80,7 +80,7 @@
     nearestPet() {
       let best = null, bd = Infinity;
       for (const p of this.w.pets) {
-        if (p.leaving) continue;
+        if (p.leaving || p.special || p.surf !== 'floor') continue; // 벽·천장 위는 못 노림
         const d = Math.abs(p.x - this.x);
         if (d < bd) { bd = d; best = p; }
       }

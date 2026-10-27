@@ -1,10 +1,13 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 const isMac = process.platform === 'darwin';
 const AWAY_SEC = 5 * 60; // 이만큼 컴퓨터를 안 쓰면 다 같이 잠듦
 let panel = null;
 let overlay = null;
+let climbOn = false; // 벽타기·천장 매달리기 허용 (패널 토글)
+let lastDex = null;
 
 function overlayBounds() {
   // 작업 영역(작업표시줄·Dock 제외) 위를 걸어다니도록
@@ -36,14 +39,17 @@ function createOverlay() {
   // 기본은 마우스가 아래 창으로 통과. 캐릭터 위에 올라가면 렌더러가 해제 요청
   overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.loadFile(path.join(__dirname, 'overlay.html'));
+  overlay.webContents.on('did-finish-load', () => {
+    overlay.webContents.send('event', climbOn ? 'climb:on' : 'climb:off');
+  });
   overlay.on('closed', () => { overlay = null; });
 }
 
 function createPanel() {
   panel = new BrowserWindow({
     width: 340,
-    height: 370,
-    useContentSize: true, // 제목줄을 빼고 내용 영역이 340x370
+    height: 520,
+    useContentSize: true, // 제목줄을 빼고 내용 영역이 340x520
     resizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -53,6 +59,7 @@ function createPanel() {
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
   panel.loadFile(path.join(__dirname, 'panel.html'));
+  panel.webContents.on('did-finish-load', () => { if (lastDex) panel.webContents.send('dex', lastDex); });
   panel.on('closed', () => { panel = null; app.quit(); });
 }
 
@@ -88,7 +95,34 @@ function watchAway() {
 
 ipcMain.on('spawn', (_e, type) => overlay && overlay.webContents.send('spawn', type));
 ipcMain.on('clear', () => overlay && overlay.webContents.send('clear'));
-ipcMain.on('event', (_e, name) => overlay && overlay.webContents.send('event', name));
+ipcMain.on('event', (_e, name) => {
+  if (name === 'climb:on' || name === 'climb:off') climbOn = name === 'climb:on';
+  if (overlay) overlay.webContents.send('event', name);
+});
+ipcMain.on('dex', (_e, dex) => {
+  lastDex = dex;
+  if (panel) panel.webContents.send('dex', dex);
+});
+
+// 기념사진: 오버레이 창에서 액자 영역만 찍어 '사진' 폴더에 저장 (화면 녹화 권한 필요 없음)
+const photoDir = () => path.join(app.getPath('pictures'), '치이카와 기념사진');
+ipcMain.handle('photo', async (_e, rect) => {
+  if (!overlay) return null;
+  const img = await overlay.webContents.capturePage(rect);
+  if (img.isEmpty()) return null;
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const name = `기념사진_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.png`;
+  const file = path.join(photoDir(), name);
+  await fs.promises.mkdir(photoDir(), { recursive: true });
+  await fs.promises.writeFile(file, img.toPNG());
+  if (panel) panel.webContents.send('photo-saved', { file, name });
+  return { file, dataURL: img.toDataURL() };
+});
+ipcMain.on('open-photos', async () => {
+  await fs.promises.mkdir(photoDir(), { recursive: true });
+  shell.openPath(photoDir());
+});
 ipcMain.on('counts', (_e, counts) => panel && panel.webContents.send('counts', counts));
 ipcMain.on('set-ignore', (_e, ignore) => {
   if (!overlay) return;

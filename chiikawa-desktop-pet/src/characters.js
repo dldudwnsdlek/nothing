@@ -17,7 +17,7 @@
   // 자세 → 캐릭터별로 쓸 그림
   const POSE_SPRITE = {
     chiikawa: { default: 1, eat: 2, held: 3, fall: 3, cry: 3, scared: 3, picnic: 'picnic' },
-    hachiware: { default: 1, dance: 2, jump: 3, talk: 3, held: 3, petted: 3, picnic: 'picnic' },
+    hachiware: { default: 1, dance: 2, jump: 3, talk: 3, held: 3, petted: 3, photo: 3, picnic: 'picnic' },
     usagi: { default: 1, run: 2, shout: 2, sweep: 3, picnic: 'picnic' },
   };
 
@@ -111,6 +111,14 @@
         m.y = Math.abs(Math.sin(t * 2)) * 2;
         m.extra = 'stars';
         break;
+      case 'hang': // 벽·천장에 매달려 흔들흔들
+        m.rot = Math.sin(t * 2.2) * 10;
+        m.sy = 1 + Math.sin(t * 4.4) * 0.02;
+        break;
+      case 'photo': // 기념사진 포즈: 살짝 통통
+        m.y = Math.abs(Math.sin(t * 3)) * 2;
+        m.sy = 1 + Math.sin(t * 6) * 0.015;
+        break;
       case 'splat': // 벽에 철퍽
         m.sx = 0.58; m.sy = 1.12;
         break;
@@ -178,6 +186,6 @@
 
   root.ChiiDraw = {
     CHARS, SPRITES, spriteFor, motion, effects,
-    POSES: ['idle', 'walk', 'run', 'sit', 'eat', 'lie', 'sleep', 'jump', 'fall', 'held', 'land', 'dance', 'cry', 'talk', 'shout', 'sweep', 'picnic', 'petted', 'dizzy', 'splat', 'scared'],
+    POSES: ['idle', 'walk', 'run', 'sit', 'eat', 'lie', 'sleep', 'jump', 'fall', 'held', 'land', 'dance', 'cry', 'talk', 'shout', 'sweep', 'picnic', 'petted', 'dizzy', 'splat', 'scared', 'hang', 'photo'],
   };
 })(typeof window !== 'undefined' ? window : globalThis);

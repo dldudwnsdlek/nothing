@@ -17,16 +17,18 @@
       talk: ['와…', '…!', '헤헤', '냠냠', '좋아…!'], cry: ['으앙ㅠㅠ', 'ㅠㅠ'], click: ['와…!', '…!?', '헤헤'],
       pet: ['헤헤…', '흐흐…', '좋아…♡'], miss: ['앗…', 'ㅠㅠ'], hit: ['에잇…!', '얍…!'],
       scared: ['히익…!', 'ㅠㅠ', '무서워…'], ride: ['와…!', '높다…!'], carry: ['무거워…', '…!'],
+      climb: ['영차…', '…!'],
     },
     hachiware: {
       talk: ['어떻게든 되겠지~!', '치이카와~', '좋아!', '헤헤~'], cry: ['힝…'], click: ['앗!', '헤헤~', '간지러워~'],
       pet: ['헤헤~ 좋아!', '더 해줘~', '기분 좋다~'], miss: ['다음엔 내가!', '아앗~'], hit: ['얍!', '에잇!'],
       cheer: ['힘내~!', '할 수 있어!', '우사기 힘내!'], ride: ['영차!', '높다~!'], carry: ['영차영차~', '괜찮아~!'],
+      climb: ['올라가자~!', '영차영차~'],
     },
     usagi: {
       talk: ['흐응?', '푸루루루루', '하아?'], shout: ['우라!', '야하!', '우라라!', '하아?!'], click: ['야하!', '우라!', '하아?'],
       pet: ['흐응♡', '푸루루…', '야하…♡'], miss: ['하아?!', '우라?!'], hit: ['우라!', '우라라!', '야하!'],
-      ride: ['야하!', '우라~!'], carry: ['하아?', '흐응…'], flee: ['하아?!', '야하!'],
+      ride: ['야하!', '우라~!'], carry: ['하아?', '흐응…'], flee: ['하아?!', '야하!'], climb: ['우라!', '야하!'],
     },
   };
   const WELCOME = ['어서 와!', '왔다…!', '기다렸어~', '야하!'];
@@ -51,12 +53,21 @@
   const POSE_OF = {
     enter: 'walk', exit: 'run', chase: 'walk', train: 'walk', train_lead: 'walk', gofood: 'run', flee: 'run',
     attack: 'run', ride: 'idle', stretch: 'idle', boing: 'idle', celebrate: 'dance', cheer: 'dance',
+    climb: 'walk', golden: 'walk', giant: 'walk', photo_go: 'walk', photo_pose: 'photo',
   };
+  // 벽·천장: 면마다 캐릭터의 '오른쪽'이 화면에서 가리키는 방향과 회전 각도
+  const SURF_R = { floor: [1, 0], left: [0, 1], right: [0, -1], ceil: [-1, 0] };
+  const SURF_ROT = { floor: 0, left: 90, right: -90, ceil: 180 };
+  const CORNER = 36; // 모서리에서 다음 면으로 넘어가는 지점
+  // 축제 중에 하는 행동
+  const FESTIVAL = [['celebrate', 5, 2, 4], ['dance', 3, 2, 4], ['jump', 3]];
 
   const stage = document.getElementById('stage');
   const pets = [];
   const world = {
     stage, pets, foods: [], monsters: [], monster: null, away: false,
+    climb: false, festival: false, photo: null,
+    handlers: {}, // events.js 가 채움 (축제, 희귀 이벤트, 기념사진)
     cursor: { x: -1e4, y: -1e4, moved: -1e9 },
     GRAVITY,
     groundY: () => window.innerHeight,
@@ -98,6 +109,10 @@
       this.rider = null; // 내 머리 위의 친구
       this.food = null;
       this.fleeCd = 0;
+      this.surf = 'floor'; // floor | left | right | ceil
+      this.scale = 1;
+      this.special = null; // 희귀 이벤트로 나온 친구: 'golden' | 'giant' | 'caught'
+      this.photoX = null; // 기념사진 찍을 자리
 
       this.el = document.createElement('div');
       this.el.className = 'pet';
@@ -160,9 +175,15 @@
 
     next() {
       if (this.leaving) return this.setState('exit', 99); // 공중에서 퇴장 명령을 받았어도 착지 후 퇴장
+      if (this.special) return this.setState(this.special === 'caught' ? 'celebrate' : this.special, 99);
+      if (world.photo && this.photoX != null) return this.setState('photo_go', 1e9, this.photoX);
       if (world.away) return this.setState('sleep', 1e9);
       const food = nearestFood(this);
       if (food) return this.goFood(food);
+      if (world.festival) {
+        const [fs, fa, fb] = pickWeighted(FESTIVAL);
+        return this.setState(fs, rand(fa, fb));
+      }
       let list = BEHAVIOR[this.type];
       if (world.monster) list = MONSTER_ROLE[this.type];
       else if (this.rider) list = list.filter(([s]) => CARRY_OK.has(s));
@@ -175,34 +196,38 @@
     leave() {
       this.leaving = true;
       if (this.rider) this.rider.dismount(false);
+      if (this.surf !== 'floor') return this.letGo(); // 벽·천장에서는 먼저 떨어진 뒤 퇴장
       this.facing = this.x < stageW() / 2 ? -1 : 1;
       this.setState('exit', 99);
     }
 
     get airborne() {
+      if (this.surf !== 'floor') return false;
       if (this.state === 'held' || this.state === 'stretch' || this.state === 'ride' || this.state === 'splat') return false;
       return this.y > 0 || this.vy > 0;
     }
 
     // 다른 캐릭터가 올라설 내 머리 높이
     topY() {
-      return this.y + spriteFor(this.type, 'idle').height * 0.82 * this.stretch;
+      return this.y + spriteFor(this.type, 'idle').height * 0.82 * this.stretch * this.scale;
     }
 
     available() {
-      return !this.leaving && !this.airborne && !world.away &&
+      return !this.leaving && !this.airborne && !world.away && this.surf === 'floor' && !this.special &&
+        !(world.photo && this.photoX != null) &&
         !['held', 'stretch', 'splat', 'ride', 'exit', 'enter'].includes(this.state);
     }
 
     // ---- 상호작용 ----
     petted() {
-      if (this.leaving || this.airborne || ['held', 'stretch', 'splat', 'ride', 'exit', 'gofood', 'eat'].includes(this.state)) return;
+      if (this.leaving || this.airborne || this.special || ['held', 'stretch', 'splat', 'ride', 'exit', 'gofood', 'eat', 'photo_go', 'photo_pose'].includes(this.state)) return;
       if (world.away) return;
       if (this.state !== 'petted') this.say(pick(LINES[this.type].pet), 1.5);
       this.setState('petted', 1.8);
     }
 
     knock(dir) {
+      if (this.surf !== 'floor' || this.special) return;
       if (this.leaving || this.state === 'held' || this.state === 'stretch') return;
       if (this.rider) this.rider.dismount(false);
       this.setState('fall');
@@ -238,7 +263,7 @@
     findHead(prevY) {
       if (world.away) return null; // 다들 자는 중에는 탑 쌓기 없음
       for (const q of pets) {
-        if (q === this || q.rider || q.leaving || q.airborne) continue;
+        if (q === this || q.rider || q.leaving || q.airborne || q.surf !== 'floor' || q.special) continue;
         if (['held', 'stretch', 'splat', 'exit'].includes(q.state)) continue;
         let c = q, cycle = false; // 내가 아래에 깔린 탑 위로는 못 올라감
         while (c) { if (c === this) { cycle = true; break; } c = c.mount; }
@@ -271,6 +296,85 @@
       this.say(pick(['배부르다~', '맛있어…!', '냠!']), 1.4);
     }
 
+    // ---- 벽타기·천장 매달리기 ----
+    tryClimb() {
+      if (!world.climb || this.rider || this.mount || this.special || this.leaving || Math.random() > 0.6) return false;
+      this.startClimb(this.x < stageW() / 2 ? -1 : 1);
+      return true;
+    }
+
+    startClimb(side) {
+      this.surf = side < 0 ? 'left' : 'right';
+      this.x = side < 0 ? 0 : stageW();
+      this.y = CORNER;
+      this.facing = side < 0 ? -1 : 1; // 위쪽으로
+      this.setState('climb', rand(3, 6));
+      if (Math.random() < 0.5) this.say(pick(LINES[this.type].climb), 1.2);
+    }
+
+    toFloor(dir) {
+      this.surf = 'floor';
+      this.y = 0;
+      this.x = dir > 0 ? W / 2 : stageW() - W / 2;
+      this.facing = dir;
+      this.setState('walk', rand(2, 4));
+    }
+
+    // 벽·천장에서 손을 놓고 떨어짐
+    letGo() {
+      const surf = this.surf;
+      if (surf === 'floor') return;
+      this.surf = 'floor';
+      this.x = clamp(this.x, W / 2, stageW() - W / 2);
+      if (surf === 'ceil') this.y = groundY() - H;
+      this.y = Math.max(this.y, 1);
+      this.setState('fall');
+      this.vy = 0;
+      this.vx = surf === 'left' ? 80 : surf === 'right' ? -80 : 0;
+      if (Math.random() < 0.6) this.say(pick(['으앗!', '꺄!', '떨어진다~']), 1);
+    }
+
+    updateSurface(dt) {
+      if (!world.climb) return this.letGo();
+      this.timer -= dt;
+      const gh = groundY(), sw = stageW();
+      if (this.state === 'climb') {
+        const [rx, ry] = SURF_R[this.surf];
+        const v = CHARS[this.type].speed * 0.8;
+        this.x += rx * this.facing * v * dt;
+        this.y -= ry * this.facing * v * dt;
+        if (this.surf === 'left' || this.surf === 'right') {
+          const left = this.surf === 'left';
+          if (this.y > gh - CORNER) { // 벽 꼭대기 → 천장으로
+            this.surf = 'ceil';
+            this.y = gh;
+            this.x = left ? CORNER : sw - CORNER;
+            this.facing = left ? -1 : 1;
+          } else if (this.y < CORNER) { // 벽 아래 → 바닥으로
+            return this.toFloor(left ? 1 : -1);
+          }
+        } else if (this.x < CORNER || this.x > sw - CORNER) { // 천장 끝 → 벽 타고 내려감
+          const left = this.x < CORNER;
+          this.surf = left ? 'left' : 'right';
+          this.x = left ? 0 : sw;
+          this.y = gh - CORNER;
+          this.facing = left ? 1 : -1;
+        }
+      }
+      if (this.timer > 0) return;
+      const r = Math.random();
+      if (this.state === 'climb') {
+        if (r < 0.35) this.setState('hang', rand(2, 4));
+        else if (r < (this.surf === 'ceil' ? 0.5 : 0.42)) this.letGo();
+        else this.setState('climb', rand(2, 5));
+      } else if (r < 0.25) {
+        this.letGo();
+      } else {
+        if (Math.random() < 0.5) this.facing *= -1;
+        this.setState('climb', rand(2, 5));
+      }
+    }
+
     // ---- 매 프레임 ----
     update(dt) {
       this.t += dt;
@@ -288,6 +392,7 @@
         case 'ride': return this.updateRide(dt);
         case 'splat': return this.updateSplat(dt);
       }
+      if (this.surf !== 'floor') return this.updateSurface(dt);
       if (this.airborne) return this.updateAir(dt);
       this.updateGround(dt);
     }
@@ -377,11 +482,29 @@
           return;
         case 'walk':
         case 'train_lead':
-          walk(this.facing, this.state === 'train_lead' ? 55 : speed);
+          if (walk(this.facing, this.state === 'train_lead' ? 55 : speed) && this.state === 'walk' && this.tryClimb()) return;
           break;
         case 'run':
-          walk(this.facing, speed * 2.6);
+          if (walk(this.facing, speed * 2.6) && this.tryClimb()) return;
           break;
+        case 'golden': // 희귀 친구는 화면을 가로질러 지나감
+        case 'giant':
+          this.x += this.facing * speed * (this.state === 'giant' ? 0.5 : 0.8) * dt;
+          if (this.x < -W * 1.5 || this.x > stageW() + W * 1.5) this.remove();
+          return;
+        case 'photo_go': { // 기념사진 자리로
+          const dx = this.target - this.x;
+          if (Math.abs(dx) > 4) {
+            this.facing = Math.sign(dx);
+            this.x += Math.sign(dx) * Math.min(Math.abs(dx), speed * 1.8 * dt);
+          } else {
+            this.reached = true;
+            if (world.photo) this.facing = Math.sign(world.photo.cx - this.x) || 1;
+          }
+          return;
+        }
+        case 'photo_pose':
+          return;
         case 'flee':
           walk(this.facing, speed * 2.8);
           break;
@@ -495,7 +618,7 @@
     pose() {
       if (this.state === 'held') return 'held';
       if (this.airborne) return this.vy > 0 ? 'jump' : 'fall';
-      if (this.state === 'chase' && this.reached) return 'idle';
+      if ((this.state === 'chase' || this.state === 'photo_go') && this.reached) return 'idle';
       return POSE_OF[this.state] || this.state;
     }
 
@@ -508,12 +631,13 @@
         this.img.style.height = sp.height + 'px';
       }
       const m = motion(pose, this.t, this.type);
-      let sx = m.sx, sy = m.sy;
+      let sx = m.sx * this.scale, sy = m.sy * this.scale;
       if (this.stretch !== 1) {
         sy *= this.stretch;
         sx /= Math.sqrt(Math.max(0.3, this.stretch));
       }
-      const extra = this.dizzyOnLand && this.state === 'held' ? 'stars' : m.extra;
+      let extra = this.dizzyOnLand && this.state === 'held' ? 'stars' : m.extra;
+      if (this.special === 'golden' && !extra) extra = 'sparkle';
       this.body.style.transform =
         `translate(-50%, ${(-m.y).toFixed(1)}px) scaleX(${this.facing}) rotate(${m.rot.toFixed(1)}deg) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
       if (extra || this.fxKind) {
@@ -521,17 +645,24 @@
         this.fx.style.transform = `scaleX(${this.facing})`; // 효과 글자는 뒤집히지 않게
         this.fxKind = extra;
       }
+      const onFloor = this.surf === 'floor';
       const ground = this.mount ? 0 : this.y; // 올라타 있으면 그림자 없음
-      const s = Math.max(0.3, 1 - ground / 300);
-      this.shadow.style.opacity = this.mount ? '0' : '1';
+      const s = Math.max(0.3, 1 - ground / 300) * this.scale;
+      this.shadow.style.opacity = this.mount || !onFloor ? '0' : '1';
       this.shadow.style.transform = `translate(-50%, ${ground.toFixed(1)}px) scale(${s.toFixed(2)})`;
+      // 발밑(x, 바닥에서 y 높이)을 기준으로 놓고, 벽·천장에서는 발밑을 축으로 회전
+      const rot = SURF_ROT[this.surf];
       const left = this.x - W / 2;
       const top = groundY() - H - this.y;
-      this.el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
+      this.el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px) rotate(${rot}deg)`;
+      if (rot !== this.lastRot) {
+        this.lastRot = rot;
+        this.el.style.setProperty('--rot', `${-rot}deg`); // 말풍선은 똑바로
+      }
       let level = 0;
       for (let c = this.mount; c; c = c.mount) level++;
-      // 낮게 있는 캐릭터가 앞쪽, 탑 위에 올라탄 캐릭터는 아래 친구보다 앞쪽
-      this.el.style.zIndex = String(level ? 1100 + level : Math.round(1000 - this.y));
+      // 낮게 있는 캐릭터가 앞쪽, 탑 위에 올라탄 캐릭터는 아래 친구보다 앞쪽, 벽·천장은 맨 앞
+      this.el.style.zIndex = String(!onFloor ? 1200 : level ? 1100 + level : Math.round(1000 - this.y));
     }
 
     remove() {
@@ -672,7 +803,8 @@
     world.away = true;
     if (world.monster) world.monster.leave('…');
     for (const p of pets) {
-      if (p.leaving || p.state === 'held' || p.state === 'stretch') continue;
+      if (p.leaving || p.special || p.state === 'held' || p.state === 'stretch') continue;
+      if (p.surf !== 'floor') p.letGo();
       p.setState('sleep', 1e9);
     }
   });
@@ -680,7 +812,7 @@
     if (!world.away) return;
     world.away = false;
     pets.forEach((p, i) => setTimeout(() => {
-      if (!pets.includes(p) || p.leaving || p.state === 'held' || p.state === 'stretch') return;
+      if (!pets.includes(p) || p.leaving || p.special || p.state === 'held' || p.state === 'stretch') return;
       p.say(pick(WELCOME), 2.2);
       p.welcomeChase = true; // 착지하면 커서 쪽으로 달려옴
       if (!p.airborne) {
@@ -700,13 +832,13 @@
 
   function reportCounts() {
     const counts = { chiikawa: 0, hachiware: 0, usagi: 0 };
-    for (const p of pets) if (!p.leaving) counts[p.type]++;
+    for (const p of pets) if (!p.leaving && !p.special) counts[p.type]++;
     api.reportCounts(counts);
   }
 
   function spawn(type) {
     if (!CHARS[type]) return;
-    if (pets.filter((p) => !p.leaving).length >= MAX_PETS) return;
+    if (pets.filter((p) => !p.leaving && !p.special).length >= MAX_PETS) return;
     const p = new Pet(type);
     pets.push(p);
     if (world.away) p.setState('sleep', 1e9);
@@ -726,6 +858,8 @@
     if (name === 'food') dropFood();
     else if (name === 'train') startTrain();
     else if (name === 'monster') summonMonster();
+    else if (name === 'climb:on' || name === 'climb:off') world.climb = name === 'climb:on';
+    else if (world.handlers[name]) world.handlers[name]();
   });
 
   // ---- 마우스: 캐릭터·괴물 위에서만 클릭을 받고, 나머지는 아래 창으로 통과 ----
@@ -775,6 +909,7 @@
       if (!drag.moved && Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 4) {
         drag.moved = true;
         if (p.rider) p.rider.dismount(false);
+        p.surf = 'floor'; // 벽·천장에서 떼어냄
         p.setState('held', 1e9);
       }
       if (drag.moved) {
@@ -809,12 +944,17 @@
     }
     const p = hit;
     if (p.leaving) return;
+    if (p.special) { // 희귀 친구는 잡거나 말을 걸 수만 있음
+      if (e.button === 0 && world.handlers.touchSpecial) world.handlers.touchSpecial(p);
+      return;
+    }
     if (e.button === 2) { p.say('안녕~', 1); p.leave(); reportCounts(); return; }
     if (e.button !== 0) return;
     const rect = p.el.getBoundingClientRect();
+    const onFloor = p.surf === 'floor';
     drag = {
       pet: p, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, lt: now(), t0: now(),
-      ox: e.clientX - (rect.left + W / 2), oy: e.clientY - rect.top, vx: 0, vy: 0,
+      ox: onFloor ? e.clientX - (rect.left + W / 2) : 0, oy: onFloor ? e.clientY - rect.top : H / 2, vx: 0, vy: 0,
       moved: false, stretch: false, shakes: [], shakeDir: 0,
     };
   });
@@ -829,7 +969,8 @@
     } else if (!moved) {
       // 클릭: 깡충 뛰며 한마디
       p.say(pick(LINES[p.type].click), 1.2);
-      if (p.state === 'ride') p.dismount(true);
+      if (p.surf !== 'floor') p.letGo();
+      else if (p.state === 'ride') p.dismount(true);
       else if (!p.airborne) p.setState('jump');
     } else {
       // 던지기
@@ -856,7 +997,7 @@
     // 꾹 누르고 가만히 있으면 말랑 늘이기 시작
     if (drag && !drag.moved && !drag.stretch && t - drag.t0 > STRETCH_HOLD_MS) {
       const p = drag.pet;
-      if (!p.airborne && !['ride', 'splat', 'exit'].includes(p.state)) {
+      if (!p.airborne && p.surf === 'floor' && !['ride', 'splat', 'exit', 'photo_go', 'photo_pose'].includes(p.state)) {
         drag.stretch = true;
         if (p.rider) p.rider.dismount(false);
         p.spring = null;
@@ -868,8 +1009,9 @@
     eventClock += dt;
     if (eventClock >= 1) {
       eventClock = 0;
-      const n = pets.filter((p) => !p.leaving).length;
-      if (!world.away && !world.monster) {
+      const n = pets.filter((p) => !p.leaving && !p.special).length;
+      if (world.handlers.tick) world.handlers.tick(n);
+      if (!world.away && !world.monster && !world.photo && !world.festival) {
         if (n >= 3 && Math.random() < 1 / 120) startTrain();
         if (n >= 1 && t - lastMonsterAt > 5 * 60 * 1000 && Math.random() < 1 / 300) summonMonster();
       }
@@ -882,6 +1024,7 @@
     for (const p of pets) p.draw();
     for (const f of world.foods) f.draw();
     for (const m of world.monsters) m.draw();
+    if (world.handlers.frame) world.handlers.frame(dt);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -891,5 +1034,6 @@
   });
 
   // 브라우저 미리보기/테스트용
-  window.__pets = { spawn, clearAll, pets, world, dropFood, startTrain, summonMonster, updateCursor };
+  // events.js 와 브라우저 미리보기/테스트용
+  window.__pets = { spawn, clearAll, pets, world, dropFood, startTrain, summonMonster, updateCursor, Pet, W, H };
 })();

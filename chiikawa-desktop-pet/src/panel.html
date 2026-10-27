@@ -27,6 +27,13 @@
     .row button.primary { background: #ffe3ea; border-color: #f2b8c6; }
     .row button:hover { filter: brightness(.97); }
     .row.events button { font-size: 12px; padding: 8px 4px; background: #f3f8ff; border-color: #d3e3f5; }
+    .toggle { display: block; width: 100%; margin-top: 10px; padding: 9px 6px; border-radius: 12px; font-weight: 700; font-size: 13px;
+      border: 2px solid var(--line); background: var(--card); }
+    .toggle[aria-pressed="true"] { background: #e7f7df; border-color: #a9d99a; }
+    .toggle b { margin-left: 4px; color: #b9a99a; }
+    .toggle[aria-pressed="true"] b { color: #4c9a3c; }
+    .status { margin-top: 8px; font-size: 11px; text-align: center; opacity: .85; }
+    .status button { font-size: 11px; margin-left: 6px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
     .tip { margin-top: 10px; font-size: 11px; line-height: 1.5; opacity: .75; text-align: center; }
   </style>
 </head>
@@ -47,6 +54,14 @@
       <button data-event="train">🚂 기차놀이</button>
       <button data-event="monster">⚔️ 토벌!</button>
     </div>
+    <div class="row events">
+      <button data-event="festival">🎉 축제</button>
+      <button data-event="photo">📸 기념사진</button>
+      <button data-event="lucky">✨ 행운 뽑기</button>
+    </div>
+    <button id="climb" class="toggle" aria-pressed="false">🧗 벽타기·천장 매달리기 <b>OFF</b></button>
+    <div class="status" id="dex">✨ 도감 · 황금 친구 0 · 별똥별 0 · 왕 친구 0 · 사진 0</div>
+    <div class="status" id="photo-saved" hidden></div>
     <div class="tip">클릭: 깡충 · 드래그: 던지기 · 우클릭: 집에 보내기<br>
       살살 문지르기: 쓰담쓰담 · 꾹 누르고 당기기: 말랑<br>
       들고 흔들기: 어질어질 · 머리 위에 떨어뜨리기: 탑 쌓기</div>
