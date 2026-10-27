@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor } = require('electron');
 const path = require('path');
 
 const isMac = process.platform === 'darwin';
+const AWAY_SEC = 5 * 60; // 이만큼 컴퓨터를 안 쓰면 다 같이 잠듦
 let panel = null;
 let overlay = null;
 
@@ -41,7 +42,8 @@ function createOverlay() {
 function createPanel() {
   panel = new BrowserWindow({
     width: 340,
-    height: 300,
+    height: 370,
+    useContentSize: true, // 제목줄을 빼고 내용 영역이 340x370
     resizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -58,8 +60,35 @@ function fitOverlay() {
   if (overlay) overlay.setBounds(overlayBounds());
 }
 
+// 커서 위치를 오버레이 기준 좌표로 알려줌 (캐릭터가 쳐다보고 따라오도록)
+function watchCursor() {
+  setInterval(() => {
+    if (!overlay || overlay.isDestroyed()) return;
+    const p = screen.getCursorScreenPoint();
+    const b = overlay.getBounds();
+    overlay.webContents.send('cursor', { x: p.x - b.x, y: p.y - b.y });
+  }, 100);
+}
+
+// 자리 비움 감지: 오래 안 쓰면 잠들고, 돌아오면 반겨줌
+function watchAway() {
+  let away = false;
+  setInterval(() => {
+    if (!overlay || overlay.isDestroyed()) return;
+    const idle = powerMonitor.getSystemIdleTime();
+    if (!away && idle >= AWAY_SEC) {
+      away = true;
+      overlay.webContents.send('user-away');
+    } else if (away && idle < 3) {
+      away = false;
+      overlay.webContents.send('user-back');
+    }
+  }, 2000);
+}
+
 ipcMain.on('spawn', (_e, type) => overlay && overlay.webContents.send('spawn', type));
 ipcMain.on('clear', () => overlay && overlay.webContents.send('clear'));
+ipcMain.on('event', (_e, name) => overlay && overlay.webContents.send('event', name));
 ipcMain.on('counts', (_e, counts) => panel && panel.webContents.send('counts', counts));
 ipcMain.on('set-ignore', (_e, ignore) => {
   if (!overlay) return;
@@ -78,6 +107,8 @@ if (!gotLock) {
   app.whenReady().then(() => {
     createOverlay();
     createPanel();
+    watchCursor();
+    watchAway();
     screen.on('display-metrics-changed', fitOverlay);
     screen.on('display-added', fitOverlay);
     screen.on('display-removed', fitOverlay);

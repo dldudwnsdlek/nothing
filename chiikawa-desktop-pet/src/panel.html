@@ -26,6 +26,7 @@
     .row button { flex: 1; padding: 9px 6px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); font-weight: 700; font-size: 13px; }
     .row button.primary { background: #ffe3ea; border-color: #f2b8c6; }
     .row button:hover { filter: brightness(.97); }
+    .row.events button { font-size: 12px; padding: 8px 4px; background: #f3f8ff; border-color: #d3e3f5; }
     .tip { margin-top: 10px; font-size: 11px; line-height: 1.5; opacity: .75; text-align: center; }
   </style>
 </head>
@@ -41,7 +42,14 @@
       <button class="primary" id="all">다 같이 나와!</button>
       <button id="clear">모두 들여보내기</button>
     </div>
-    <div class="tip">클릭: 깡충 · 드래그: 들어서 던지기 · 우클릭: 집에 보내기</div>
+    <div class="row events">
+      <button data-event="food">🍙 간식 주기</button>
+      <button data-event="train">🚂 기차놀이</button>
+      <button data-event="monster">⚔️ 토벌!</button>
+    </div>
+    <div class="tip">클릭: 깡충 · 드래그: 던지기 · 우클릭: 집에 보내기<br>
+      살살 문지르기: 쓰담쓰담 · 꾹 누르고 당기기: 말랑<br>
+      들고 흔들기: 어질어질 · 머리 위에 떨어뜨리기: 탑 쌓기</div>
   </div>
   <script src="characters.js"></script>
   <script src="panel.js"></script>

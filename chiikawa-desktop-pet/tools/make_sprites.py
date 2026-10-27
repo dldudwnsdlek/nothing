@@ -3,7 +3,8 @@
 사용법 (chiikawa-desktop-pet 폴더에서):
     python3 tools/make_sprites.py
 
-결과물: src/sprites/<캐릭터>_<번호>.png, 사진.jpg 에서 잘라낸 <캐릭터>_picnic.png
+결과물: src/sprites/<캐릭터>_<번호>.png, 사진.jpg 에서 잘라낸 <캐릭터>_picnic.png,
+        토벌 괴물 monster_*.png (배경이 복잡한 사진은 opencv-python 필요)
 """
 from collections import deque
 from pathlib import Path
@@ -22,6 +23,14 @@ SOURCES = {
     "usagi": ["우사기_1.jpg", "우사기_2.jpg", "우사기_3.jpg"],
 }
 GROUP_PHOTO = "사진.jpg"  # 왼쪽부터 우사기, 치이카와, 하치와레
+
+# 토벌 괴물: 출력 이름 -> (사진, 배경이 복잡하면 GrabCut 영역 (x, y, w, h)와 외곽선 밝기 기준)
+MONSTERS = {
+    "monster_sit": ("괴물_1.png", (30, 8, 305, 330), 70),     # 숲 배경
+    "monster_night": ("괴물_2.jpg", (35, 125, 285, 300), 45),  # 밤 배경
+    "monster_pounce": ("괴물_3.jpg", None, None),              # 흰 배경
+    "mermaid": ("인어괴물.jpg", None, None),                   # 흰 배경
+}
 
 
 def dilate(mask, n=1):
@@ -104,6 +113,31 @@ def auto_mask(rgb):
     return next(m for m in masks if m.sum() >= best * 0.97)
 
 
+def scene_mask(rgb, rect, dark_th):
+    """배경이 그림(숲, 밤하늘)인 사진: GrabCut 으로 대략 영역을 잡고, 그 안에서 외곽선 기준으로 채움."""
+    import cv2
+
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    gc = np.zeros(rgb.shape[:2], np.uint8)
+    cv2.grabCut(bgr, gc, rect, np.zeros((1, 65)), np.zeros((1, 65)), 8, cv2.GC_INIT_WITH_RECT)
+    rough = (gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD)
+    rough = ~flood_from_border(~rough)
+    ys, xs = zip(*components(rough)[0])
+    rough = np.zeros_like(rough)
+    rough[list(ys), list(xs)] = True
+    rough = dilate(rough, 6)  # GrabCut 이 놓친 외곽선까지 포함
+    dark = rgb.astype(np.int16).mean(axis=2) < dark_th
+    masks = []
+    for gap in GAPS[:6]:
+        outside = flood_from_border(~dilate(dark, gap) | ~rough)
+        for _ in range(gap + 1):
+            grown = dilate(outside, 1)
+            outside |= (grown & ~dark & rough) | (grown & ~rough)
+        masks.append(~outside)
+    best = max(m.sum() for m in masks)
+    return next(m for m in masks if m.sum() >= best * 0.97)
+
+
 def to_sprite(rgb, mask):
     comps = components(mask)
     keep = np.zeros_like(mask)
@@ -152,6 +186,13 @@ def main():
         sprite = to_sprite(rgb, sub)
         sprite.save(OUT / f"{name}_picnic.png", optimize=True)
         print(f"{GROUP_PHOTO} -> {name}_picnic.png {sprite.size}")
+
+    for name, (f, rect, dark_th) in MONSTERS.items():
+        rgb = np.array(Image.open(ROOT / f).convert("RGB"))
+        mask = scene_mask(rgb, rect, dark_th) if rect else auto_mask(rgb)
+        sprite = to_sprite(rgb, mask)
+        sprite.save(OUT / f"{name}.png", optimize=True)
+        print(f"{f} -> {name}.png {sprite.size}")
 
 
 if __name__ == "__main__":

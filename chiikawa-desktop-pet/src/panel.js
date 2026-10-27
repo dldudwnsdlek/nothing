@@ -19,6 +19,9 @@
     ['chiikawa', 'hachiware', 'usagi'].forEach((t, i) => setTimeout(() => api.spawn(t), i * 350));
   });
   document.getElementById('clear').addEventListener('click', () => api.clearAll());
+  document.querySelectorAll('[data-event]').forEach((b) => {
+    b.addEventListener('click', () => api.event(b.dataset.event));
+  });
 
   api.onCounts((counts) => {
     cards.forEach((card) => {

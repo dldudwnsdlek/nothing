@@ -16,8 +16,8 @@
 
   // 자세 → 캐릭터별로 쓸 그림
   const POSE_SPRITE = {
-    chiikawa: { default: 1, eat: 2, held: 3, fall: 3, cry: 3, picnic: 'picnic' },
-    hachiware: { default: 1, dance: 2, jump: 3, talk: 3, held: 3, picnic: 'picnic' },
+    chiikawa: { default: 1, eat: 2, held: 3, fall: 3, cry: 3, scared: 3, picnic: 'picnic' },
+    hachiware: { default: 1, dance: 2, jump: 3, talk: 3, held: 3, petted: 3, picnic: 'picnic' },
     usagi: { default: 1, run: 2, shout: 2, sweep: 3, picnic: 'picnic' },
   };
 
@@ -30,7 +30,7 @@
 
   // 자세별 움직임. 기준점은 그림의 발밑 가운데.
   // 반환: { y(위로 px), rot(deg), sx, sy, extra }
-  function motion(pose, t) {
+  function motion(pose, t, type) {
     const m = { y: 0, rot: 0, sx: 1, sy: 1, extra: null };
     let ph;
     switch (pose) {
@@ -100,6 +100,25 @@
         m.rot = Math.sin(t * 25) * 5;
         m.sx = 1.05; m.sy = 1.05;
         break;
+      case 'petted': // 쓰담쓰담: 녹아내리듯 말랑
+        m.sx = 1.12 + Math.sin(t * 4) * 0.02;
+        m.sy = 0.86 - Math.sin(t * 4) * 0.02;
+        m.rot = Math.sin(t * 3) * 4;
+        m.extra = 'hearts';
+        break;
+      case 'dizzy':
+        m.rot = Math.sin(t * 4) * 11;
+        m.y = Math.abs(Math.sin(t * 2)) * 2;
+        m.extra = 'stars';
+        break;
+      case 'splat': // 벽에 철퍽
+        m.sx = 0.58; m.sy = 1.12;
+        break;
+      case 'scared':
+        m.rot = Math.sin(t * 40) * 3;
+        m.sy = 0.95;
+        m.extra = type === 'chiikawa' ? 'tears' : 'sweat';
+        break;
       case 'sweep':
         m.rot = Math.sin(t * 5) * 7;
         m.y = Math.abs(Math.sin(t * 5)) * 2;
@@ -133,6 +152,20 @@
         const x = [8, 92, 50][i], y = [30, 25, -6][i];
         s += `<text x="${x}" y="${y}" font-size="${10 + Math.sin(k * Math.PI) * 6}" fill="#f2c14e" opacity="${fade(k)}" text-anchor="middle">✦</text>`;
       }
+    } else if (kind === 'hearts') {
+      for (let i = 0; i < 4; i++) {
+        const k = (t * 0.8 + i / 4) % 1;
+        const x = 50 + Math.sin(i * 2.3 + k * 5) * 38;
+        s += `<text x="${x.toFixed(1)}" y="${(25 - k * 50).toFixed(1)}" font-size="${12 + k * 8}" fill="#ff7fa8" opacity="${fade(k)}" text-anchor="middle">♥</text>`;
+      }
+    } else if (kind === 'stars') {
+      for (let i = 0; i < 3; i++) {
+        const a = t * 4 + (i * Math.PI * 2) / 3;
+        s += `<text x="${(50 + Math.cos(a) * 30).toFixed(1)}" y="${(2 + Math.sin(a) * 8).toFixed(1)}" font-size="15" fill="#f2c14e" stroke="#b8860b" stroke-width=".6" text-anchor="middle">★</text>`;
+      }
+    } else if (kind === 'sweat') {
+      const k = (t * 1.5) % 1;
+      s += `<path d="M 88 ${10 + k * 10} q 6 8 0 12 q -6 -4 0 -12 Z" fill="#9bd3f7" stroke="#5a9ccc" stroke-width="1" opacity="${(1 - k).toFixed(2)}"/>`;
     } else if (kind === 'dust') {
       for (let i = 0; i < 3; i++) {
         const k = (t * 2 + i / 3) % 1;
@@ -145,6 +178,6 @@
 
   root.ChiiDraw = {
     CHARS, SPRITES, spriteFor, motion, effects,
-    POSES: ['idle', 'walk', 'run', 'sit', 'eat', 'lie', 'sleep', 'jump', 'fall', 'held', 'land', 'dance', 'cry', 'talk', 'shout', 'sweep', 'picnic'],
+    POSES: ['idle', 'walk', 'run', 'sit', 'eat', 'lie', 'sleep', 'jump', 'fall', 'held', 'land', 'dance', 'cry', 'talk', 'shout', 'sweep', 'picnic', 'petted', 'dizzy', 'splat', 'scared'],
   };
 })(typeof window !== 'undefined' ? window : globalThis);
